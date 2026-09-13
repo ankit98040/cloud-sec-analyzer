@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build, Scan and Push Docker Image
 
 on:
   push:
@@ -13,7 +13,7 @@ env:
   IMAGE_NAME: ankit98040/cloud-sec-analyzer
 
 jobs:
-  build-and-push:
+  build-scan-and-push:
     runs-on: ubuntu-latest
 
     steps:
@@ -43,7 +43,31 @@ jobs:
             type=ref,event=tag
             type=ref,event=branch
 
-      - name: Build and push Docker image
+      # Step 1: Build image locally for scanning
+      - name: Build Docker image locally
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: ${{ env.IMAGE_NAME }}:test-scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Step 2: Scan the built image for security vulnerabilities with Trivy
+      - name: Scan Docker image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:test-scan
+          format: 'table'
+          exit-code: '0' # Set to '1' if you want the pipeline to fail on CRITICAL vulnerabilities
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # Step 3: Push the verified image to Docker Hub
+      - name: Push Docker image to Docker Hub
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -53,4 +77,3 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
