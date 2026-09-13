@@ -1,7 +1,17 @@
+import os
 # pyrefly: ignore [missing-import]
 from dotenv import load_dotenv
 # pyrefly: ignore [missing-import]
-from agents import Agent, Runner, function_tool
+from openai import AsyncOpenAI
+# pyrefly: ignore [missing-import]
+from agents import (
+    Agent,
+    Runner,
+    function_tool,
+    OpenAIChatCompletionsModel,
+    set_default_openai_client,
+    set_tracing_disabled,
+)
 # pyrefly: ignore [missing-import]
 import gradio as gr
 import sqlite3
@@ -10,7 +20,21 @@ import traceback
 
 load_dotenv(override=True)
 
-MODEL = "gpt-4.1-mini"
+api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
+base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+model_name = os.getenv("MODEL_NAME", "nvidia/nemotron-3-nano-30b-a3b")
+
+client = AsyncOpenAI(
+    base_url=base_url,
+    api_key=api_key,
+)
+set_default_openai_client(client, use_for_tracing=False)
+set_tracing_disabled(True)
+
+agent_model = OpenAIChatCompletionsModel(
+    model=model_name,
+    openai_client=client,
+)
 
 instructions = "You are a helpful assistant for an Airline called FlightAI. "
 instructions += "Use your tools to get ticket prices and calculate discounts. Trips to London have a 10% discount on the price. "
@@ -62,7 +86,7 @@ async def chat(message, history):
     messages = [{"role": m["role"], "content": m["content"]} for m in history]
     messages += [{"role": "user", "content": message}]
     agent = Agent(
-        name="FlightAI", instructions=instructions, model=MODEL, tools=[get_ticket_price, calculate]
+        name="FlightAI", instructions=instructions, model=agent_model, tools=[get_ticket_price, calculate]
     )
     result = await Runner.run(agent, messages)
     return result.final_output
